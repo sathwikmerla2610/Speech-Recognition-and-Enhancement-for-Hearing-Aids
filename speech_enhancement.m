@@ -4,9 +4,9 @@ clear all;
 
 % Ensure required toolboxes are installed: Signal Processing, Audio, Control Systems
 
-% Set input and output file paths
-inputFile = 'C:\Users\sathw\Documents\MATLAB\testing2.wav';  % Change to your input WAV file
-outputFile = 'C:\Users\sathw\Documents\MATLAB\enhanced_speech2.wav'; % Output enhanced WAV file
+% Set input and output folder paths
+inputFolder = 'C:\Users\sathw\Documents\MATLAB\input_audio';   % Change to your input folder
+outputFolder = 'C:\Users\sathw\Documents\MATLAB\enhanced_audio';  % Change to your output folder
 
 % Parameters (TUNING REQUIRED - CRITICAL FOR OPTIMAL PERFORMANCE)
 frame_length = 0.025;       % Frame length in seconds (slightly longer for better speech context)
@@ -29,44 +29,66 @@ wavelet_level = 6;      % Number of wavelet decomposition levels
 wavelet_family = 'db4';   % Wavelet family (Daubechies 4 is a good compromise)
 threshold_type = 's'; % Threshold type ('s' for soft, 'h' for hard) - corrected to be 's' or 'h'
 
-% Read input audio
-try
-    [noisyAudio, fs] = audioread(inputFile);
-    if isempty(noisyAudio)
-        error('Audio file is empty.');
-    end
-    
-    % Convert floating-point PCM to standard PCM if necessary
-    if ~isa(noisyAudio, 'double')
-        noisyAudio = double(noisyAudio);
-    end
-
-    % Make sure audio is mono. If stereo, convert to mono.
-    if size(noisyAudio, 2) > 1
-        noisyAudio = mean(noisyAudio, 2);
-        fprintf('Input audio was stereo. Converting to mono.\n');
-    end
-    
-catch ME
-    error('Error reading input WAV file: %s', ME.message);
+% Create output folder if it doesn't exist
+if ~exist(outputFolder, 'dir')
+    mkdir(outputFolder);
 end
 
-% Apply pre-emphasis filter
-noisyAudio = preemphasis(noisyAudio, preemphasis_coeff);
+% Get list of WAV files in the input folder
+fileList = dir(fullfile(inputFolder, '*.wav'));
 
-% Enhance audio using Wiener, Kalman filters, and additional methods
-try
-    [enhancedSpeech] = enhanceAudio(noisyAudio, fs, frame_length, frame_overlap_fraction, targetNoiseFloorDB, Q, R, initial_state_estimate, initial_error_covariance, alpha_sub, beta_sub, wavelet_level, wavelet_family, threshold_type);
-    
-    % Normalize audio to prevent clipping
-    enhancedSpeech = enhancedSpeech / max(abs(enhancedSpeech));
-    
-    % Write output WAV file
-    audiowrite(outputFile, enhancedSpeech, fs, 'BitsPerSample', 16);
-    fprintf('Enhanced audio saved to: %s\n', outputFile);
-catch ME
-    error('Error during enhancement: %s', ME.message);
+% Process each WAV file
+for i = 1:length(fileList)
+    inputFile = fullfile(inputFolder, fileList(i).name);
+    [~, name, ext] = fileparts(fileList(i).name);  %Split to create a variable for name of the files
+
+    outputFile = fullfile(outputFolder, [name '_enhanced' ext]);
+
+    fprintf('Processing file: %s\n', fileList(i).name);
+
+    % Read input audio
+    try
+        [noisyAudio, fs] = audioread(inputFile);
+        if isempty(noisyAudio)
+            error('Audio file is empty.');
+        end
+
+        % Convert floating-point PCM to standard PCM if necessary
+        if ~isa(noisyAudio, 'double')
+            noisyAudio = double(noisyAudio);
+        end
+
+        % Make sure audio is mono. If stereo, convert to mono.
+        if size(noisyAudio, 2) > 1
+            noisyAudio = mean(noisyAudio, 2);
+            fprintf('Input audio was stereo. Converting to mono.\n');
+        end
+
+    catch ME
+        fprintf('Error reading input WAV file: %s\n', ME.message);
+        continue; % Skip to the next file
+    end
+
+    % Apply pre-emphasis filter
+    noisyAudio = preemphasis(noisyAudio, preemphasis_coeff);
+
+    % Enhance audio using Wiener, Kalman filters, and additional methods
+    try
+        [enhancedSpeech] = enhanceAudio(noisyAudio, fs, frame_length, frame_overlap_fraction, targetNoiseFloorDB, Q, R, initial_state_estimate, initial_error_covariance, alpha_sub, beta_sub, wavelet_level, wavelet_family, threshold_type);
+
+        % Normalize audio to prevent clipping
+        enhancedSpeech = enhancedSpeech / max(abs(enhancedSpeech));
+
+        % Write output WAV file
+        audiowrite(outputFile, enhancedSpeech, fs, 'BitsPerSample', 16);
+        fprintf('Enhanced audio saved to: %s\n', outputFile);
+    catch ME
+        fprintf('Error during enhancement: %s\n', ME.message);
+    end
 end
+
+fprintf('Finished processing all files.\n');
+
 
 %% Helper Functions
 function [enhancedSpeech] = enhanceAudio(noisyAudio, fs, frame_length, frame_overlap_fraction, targetNoiseFloorDB, Q, R, initial_state_estimate, initial_error_covariance, alpha_sub, beta_sub, wavelet_level, wavelet_family, threshold_type)
@@ -89,10 +111,10 @@ function [enhancedSpeech] = enhanceAudio(noisyAudio, fs, frame_length, frame_ove
     
     % Trim all signals to the minimum length
     enhancedSpeechWiener = enhancedSpeechWiener(1:minLength);
-    enhancedSpeechKalman = kalmanFilterEnhancement(noisyAudio, Q, R, initial_state_estimate, initial_error_covariance);
+    enhancedSpeechKalman = enhancedSpeechKalman(1:minLength);
     enhancedSpeechSpectralSubtraction = enhancedSpeechSpectralSubtraction(1:minLength);
-    enhancedSpeechMedianFilter = medianFilterEnhancement(noisyAudio);
-    enhancedSpeechWavelet = waveletDenoisingEnhancement(noisyAudio, wavelet_level, wavelet_family, threshold_type);
+    enhancedSpeechMedianFilter = enhancedSpeechMedianFilter(1:minLength);
+    enhancedSpeechWavelet = enhancedSpeechWavelet(1:minLength);
 
      % Adaptive Combination Weights (Can be further improved with Voice Activity Detection - VAD)
     % This attempts to prioritize Wiener and Kalman when signal is strong,
